@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Suunto Core 2 OTA Flasher</string>
+    <string name="warning_banner">VAROVÁNÍ: Tento development nástroj slouží výhradně k flashování Suunto Core 2 (Explorer). Nepoužívejte na jiná zařízení. Nástroj od Adam Krůžela.</string>
+    <string name="device_label">Zařízení (spárované Core 2)</string>
+    <string name="mode_label">Režim firmwaru</string>
+    <string name="mode_original">Originální</string>
+    <string name="mode_modified">Modifikovaný</string>
+    <string name="firmware_label">Firmware</string>
+    <string name="flash">Flashovat</string>
+    <string name="modified_empty">Zatím žádný modifikovaný firmware</string>
+    <string name="no_devices">Žádné spárované Suunto Core 2. Spárujte hodinky v systémovém Bluetooth.</string>
+</resources>

@@ -1,0 +1,17 @@
+[project]
+name = "suunto-fw-inject"
+version = "0.1.0"
+description = "Local catalog server + Suunto APK patcher to inject an Explorer firmware ZIP"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+suunto-fw-inject = "suunto_fw_inject.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["suunto_fw_inject*"]

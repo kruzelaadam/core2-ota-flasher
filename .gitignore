@@ -1,0 +1,51 @@
+# Build and package outputs
+dist/
+build/
+**/build/
+*.apk
+*.aab
+*.aar
+*.jar
+*.o
+*.out
+*.so
+*.keystore
+*.jks
+*.hprof
+captures/
+
+# Firmware images and dumps. Obtain these yourself; do not commit them.
+*.bin
+*.fw
+*.hex
+*.dfu
+*.elf
+*.zip
+!android-ota-flasher/gradle/wrapper/gradle-wrapper.jar
+
+# Secrets and local config
+.env
+.env.*
+secrets.*
+*.pem
+*.key
+local.properties
+android-ota-flasher/local.properties
+android-ota-flasher/app/libs/
+
+# Python / Node
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+.next/
+
+# IDE and OS
+.DS_Store
+.idea/
+.vscode/
+*.iml
+android-ota-flasher/.gradle/
+
+# Third-party tool binaries (see scripts/fetch_vendor.sh)
+vendor/

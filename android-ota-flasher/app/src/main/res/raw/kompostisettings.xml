@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Same runtime knobs Suunto ships; must land in filesDir as KompostiSettings.xml
+     before MDS SDSInternalWrapper.startService(). -->
+<komposti>
+    <settings>
+        <debugLevel>LOG_LEVEL_TRACE</debugLevel>
+        <whiteboardSerial>ECSD00000003</whiteboardSerial>
+        <inetgwEnabled>false</inetgwEnabled>
+        <busyStateEnabled>false</busyStateEnabled>
+    </settings>
+</komposti>

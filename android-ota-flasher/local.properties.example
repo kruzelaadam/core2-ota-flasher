@@ -1,0 +1,9 @@
+# Copy the sdk.dir line into local.properties (already gitignored).
+sdk.dir=/path/to/Android/sdk
+
+# Catalog key used by the official Suunto app. Original mode stays empty without it.
+SUUNTO_APPKEY=
+
+# Optional Google Drive folder that contains Corium_* packages. Leave empty to skip Modified mode.
+MODIFIED_MIRROR_FOLDER_ID=
+MODIFIED_INDEX_FILE_ID=
