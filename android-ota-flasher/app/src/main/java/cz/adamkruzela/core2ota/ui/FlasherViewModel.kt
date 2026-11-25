@@ -8,8 +8,8 @@ import androidx.lifecycle.viewModelScope
 import cz.adamkruzela.core2ota.ble.BondedCore2Devices
 import cz.adamkruzela.core2ota.ble.Core2Device
 import cz.adamkruzela.core2ota.catalog.CatalogEntry
-import cz.adamkruzela.core2ota.catalog.DriveDownloads
 import cz.adamkruzela.core2ota.catalog.FirmwareCatalog
+import cz.adamkruzela.core2ota.catalog.FirmwareDownloader
 import cz.adamkruzela.core2ota.catalog.ModifiedCatalog
 import cz.adamkruzela.core2ota.catalog.ModifiedPackage
 import cz.adamkruzela.core2ota.data.FlashMode
@@ -275,7 +275,7 @@ class FlasherViewModel(app: Application) : AndroidViewModel(app) {
                     catalogError = null,
                     firmwares = emptyList(),
                     versionNotes = null,
-                    status = "Scanning Drive for Corium_* packages…",
+                    status = "Scanning modified mirror…",
                 )
             }
             runCatching {
@@ -291,8 +291,7 @@ class FlasherViewModel(app: Application) : AndroidViewModel(app) {
                             selectedFirmwareUri = first?.downloadUri,
                             catalogError =
                                 if (list.isEmpty()) {
-                                    "No Corium_* folders in Drive mirror " +
-                                        "(add Corium_X.Y.Z with Version.txt + ZIP)"
+                                    "No package folders with Version.txt and a ZIP"
                                 } else {
                                     null
                                 },
@@ -446,15 +445,15 @@ class FlasherViewModel(app: Application) : AndroidViewModel(app) {
                 val name = s.selectedModifiedName
                 val pkg = s.modifiedPackages.firstOrNull { it.name == name }
                 if (pkg == null) {
-                    _state.update { it.copy(fatalError = "Select a Modified Corium package.") }
+                    _state.update { it.copy(fatalError = "Select a modified package.") }
                     return
                 }
                 runFlash(mac) { session, cache, onProgress ->
-                    onProgress(OtaProgress.Status("Downloading ${pkg.name} from Drive…"))
+                    onProgress(OtaProgress.Status("Downloading ${pkg.zipFileName}…"))
                     val zip =
                         withContext(Dispatchers.IO) {
                             val dest = File(cache, pkg.zipFileName)
-                            DriveDownloads.download(pkg.zipFileId, dest) { downloaded, total ->
+                            FirmwareDownloader().download(pkg.downloadUri, dest) { downloaded, total ->
                                 val pct =
                                     if (total > 0) {
                                         ((downloaded * 100) / total).toInt().coerceIn(0, 100)
