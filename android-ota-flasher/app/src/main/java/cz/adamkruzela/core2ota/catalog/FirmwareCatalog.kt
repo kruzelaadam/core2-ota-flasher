@@ -24,7 +24,7 @@ data class CatalogEntry(
  * uses this list (and merges anything a configured key still returns).
  */
 object ExplorerCatalog {
-    private const val CDN = "https://firmware.geo.movescount.com/production/"
+    private const val CDN = "https://devices.suunto-operations.com/firmwares/"
 
     fun bundled(): List<CatalogEntry> =
         listOf(
@@ -71,7 +71,7 @@ class FirmwareCatalog(
     }
 
     private fun fetchLiveHistory(variant: String, hw: String): List<CatalogEntry> {
-        val url = "$base/firmware/devices/$variant/$hw/history?appkey=$appKey"
+        val url = "$base/devices/$variant/$hw/history?appkey=$appKey"
         val body = get(url)
         val arr = JSONArray(body)
         return buildList {
@@ -82,7 +82,7 @@ class FirmwareCatalog(
     }
 
     fun fetchLatest(variant: String = "Explorer", hw: String = "A"): CatalogEntry {
-        val url = "$base/firmware/devices/$variant/$hw?appkey=$appKey"
+        val url = "$base/devices/$variant/$hw?appkey=$appKey"
         return parseEntry(JSONObject(get(url)))
     }
 

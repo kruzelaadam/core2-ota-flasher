@@ -12,7 +12,7 @@ class ModifiedCatalogTest {
         for (pkg in packages) {
             assertTrue(pkg.versionNotes.orEmpty().startsWith(pkg.name))
             assertTrue(pkg.downloadUri.endsWith(pkg.zipFileName))
-            assertTrue(pkg.downloadUri.startsWith("https://firmware.geo.movescount.com/production/"))
+            assertTrue(pkg.downloadUri.startsWith("https://devices.suunto-operations.com/firmwares/"))
             assertEquals(pkg.versionNotes, ModifiedCatalog().fetchVersionNotes(pkg))
         }
     }

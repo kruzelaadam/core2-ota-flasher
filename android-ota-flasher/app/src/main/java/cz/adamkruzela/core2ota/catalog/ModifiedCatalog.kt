@@ -130,7 +130,7 @@ class ModifiedCatalog {
             zipFileId = "",
             zipFileName = zipFileName,
             versionNotes = notes,
-            zipUrl = "https://firmware.geo.movescount.com/production/$zipFileName",
+            zipUrl = "https://devices.suunto-operations.com/firmwares/$zipFileName",
         )
 
     private fun sort(list: List<ModifiedPackage>): List<ModifiedPackage> =

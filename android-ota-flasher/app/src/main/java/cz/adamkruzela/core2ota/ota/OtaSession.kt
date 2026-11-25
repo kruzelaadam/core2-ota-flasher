@@ -547,7 +547,9 @@ class OtaSession(
             val chunk = readRange(part.file, offset, size.toInt())
             val crc = CRC32().apply { update(chunk) }.value
             val blockData = JSONArray()
-            for (b in chunk) blockData.put(b.toInt() and 0xff)
+            // Moshi writes TransferDataRes.blockData as List<Byte>, so each value is a
+            // signed byte (-128..127), not an unsigned 0..255.
+            for (b in chunk) blockData.put(b.toInt())
             val body =
                 JSONObject()
                     .put(
