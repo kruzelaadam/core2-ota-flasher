@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import cz.adamkruzela.core2ota.ble.BondedCore2Devices
 import cz.adamkruzela.core2ota.catalog.ComponentType
-import cz.adamkruzela.core2ota.catalog.EpsonImage
 import cz.adamkruzela.core2ota.catalog.FirmwareDownloader
 import cz.adamkruzela.core2ota.catalog.FirmwareIds
 import cz.adamkruzela.core2ota.catalog.FirmwarePart
@@ -91,9 +90,11 @@ internal sealed class ServeResult {
  *    INFO → PUT Version/Info again; READ → PUT `Data/Response` with the exact byte range;
  *    DFU → mcumgr upload of the type-3 package; PROGRESS → UI.
  *
- * Package bytes and description values are sent exactly as they are in the ZIP. The
- * session never rewrites versions, sizes or CRCs and never retries a flash on its own;
- * it only reconnects when the radio drops the link after the watch has started pulling.
+ * Package bytes are sent exactly as they are in the ZIP. Size and crc32 are taken from
+ * firmwareDescription.json after they have been checked against the file; a mismatch
+ * refuses the package and nothing is rewritten. Every part is offered and served,
+ * including an Epson image whose crc32 is the residue 558161692. The session never
+ * retries a flash on its own; it only reconnects when the radio drops the link.
  */
 class OtaSession(
     private val context: Context,
@@ -185,7 +186,7 @@ class OtaSession(
         val bonded = BondedCore2Devices.list(context).firstOrNull { it.address.equals(macAddress, true) }
         var serial = connect(macAddress, bonded?.serial, onProgress)
         awaitWhiteboardReady(serial, onProgress)
-        val notNewer = reportVersionGate(serial, pkg, onProgress)
+        reportInstalledVersion(serial, pkg, onProgress)
 
         val server = TransferServer(pkg, onProgress)
         val events = Channel<Event>(Channel.UNLIMITED)
@@ -314,9 +315,6 @@ class OtaSession(
                 linkDown = true
                 disarm()
                 commLog.event("LINK_LOST", "$reason ${server.summary()}")
-                if (!server.started && notNewer != null) {
-                    error("The watch declined the package without reading any data. $notNewer")
-                }
                 if (server.dfuRunning) {
                     onProgress(OtaProgress.Status("Radio restarting for DFU — waiting for mcumgr to finish…"))
                     return
@@ -331,15 +329,8 @@ class OtaSession(
                     }
                     onProgress(
                         OtaProgress.Waiting(
-                            if (sealedSameAsInstalled(pkg)) {
-                                "Watch closed the link without reading. This Application has the same " +
-                                    "size and the same CRC as the installed image (every sealed image " +
-                                    "CRCs to 558161692), so the watch will not download it. Rebuild with " +
-                                    "--after-trailer 16."
-                            } else {
-                                "Watch restarted to begin the update. Keep this app open — " +
-                                    "reconnecting to send the firmware ($dropsBeforeData)."
-                            },
+                            "Watch dropped the link before any READ. Keep this app open — " +
+                                "reconnecting to send the firmware ($dropsBeforeData).",
                         ),
                     )
                 }
@@ -364,7 +355,7 @@ class OtaSession(
                                     "The watch went quiet for ${idle / 60_000} min. "
                                 } else {
                                     "The watch never asked for data within ${idle / 60_000} min. " +
-                                        (notNewer ?: "Did it offer the update? ")
+                                        "BL1 does not READ an image whose length and crc32 match what is installed. "
                                 }) + server.summary(),
                             )
                     if (ev.generation != generation && ev !is Event.FromDfu) continue
@@ -552,6 +543,7 @@ class OtaSession(
                         "(the Suunto app refuses such reads too).",
                 )
             }
+            // Exact slice of the file. Nothing is stripped, padded or appended.
             val chunk = readRange(part.file, offset, size.toInt())
             val crc = CRC32().apply { update(chunk) }.value
             val blockData = JSONArray()
@@ -683,8 +675,9 @@ class OtaSession(
     }
 
     /**
-     * PUT Update/Transfer/Nordic/Version/Info — stock TransferVersion body built from the
-     * description entries in their original order and with their original values.
+     * PUT Update/Transfer/Nordic/Version/Info. type and version come from the description.
+     * size is the file length and crc32 is the description value, which prepare() has
+     * already checked against CRC32 of those same bytes.
      */
     private suspend fun putVersionInfo(
         serial: String,
@@ -697,7 +690,7 @@ class OtaSession(
                 JSONObject()
                     .put("type", p.type)
                     .put("version", p.version)
-                    .put("size", p.size)
+                    .put("size", p.file.length())
                     .put("crc32", p.crc32),
             )
         }
@@ -762,42 +755,29 @@ class OtaSession(
     }
 
     /**
-     * A sealed image always CRCs to the residue, so the watch cannot tell it from the
-     * installed one when the length matches too. A trailer suffix changes both.
+     * Logged only. The watch decides whether to READ. Same length and same crc32 as the
+     * installed image is skipped by BL1; a different length is requested. The session
+     * does not refuse a part because its version is not newer or because crc32 is the
+     * Epson residue.
      */
-    private fun sealedSameAsInstalled(pkg: PreparedPackage): Boolean {
-        val app = pkg.parts.firstOrNull { it.type == ComponentType.APPLICATION.wire } ?: return false
-        return (app.crc32 and 0xffffffffL) == EpsonImage.CRC32_RESIDUE
-    }
-
-    /**
-     * Information only: the watch decides whether to take the package. Returns an
-     * explanation when the offered Application is not newer than the installed one.
-     */
-    private suspend fun reportVersionGate(
+    private suspend fun reportInstalledVersion(
         serial: String,
         pkg: PreparedPackage,
         onProgress: (OtaProgress) -> Unit,
-    ): String? {
+    ) {
         val installed = probeInstalledVersion(serial)
         val offered = FwVersion.parse(pkg.parts.firstOrNull { it.type == ComponentType.APPLICATION.wire }?.version)
-        commLog.note("versionGate installed=${installed ?: "?"} offeredApplication=${offered ?: "?"}")
-        val notNewer =
-            if (installed != null && offered != null && offered <= installed) {
-                "The watch runs $installed and the package offers Application $offered. Core 2 only " +
-                    "installs an Application newer than the one it runs, so it reports \"up to date\". " +
-                    "An official package flashes only when it is newer; a modified one needs a higher " +
-                    "Application version in firmwareDescription.json (see FW_AGENT_PACKAGING_RULES)."
-            } else {
-                null
-            }
+        val app = pkg.parts.firstOrNull { it.type == ComponentType.APPLICATION.wire }
+        commLog.note(
+            "versionInfo installed=${installed ?: "?"} offeredApplication=${offered ?: "?"} " +
+                "applicationBytes=${app?.size ?: "?"} crc32=${app?.crc32 ?: "?"}",
+        )
         onProgress(
             OtaProgress.Status(
-                notNewer?.let { "Watch runs $installed, package Application $offered — not newer; expect \"up to date\"." }
-                    ?: "Watch runs ${installed ?: "?"}, package Application ${offered ?: "?"}.",
+                "Watch runs ${installed ?: "?"}, package Application ${offered ?: "?"} " +
+                    "(${app?.size ?: "?"} B). Sending the files as they are.",
             ),
         )
-        return notNewer
     }
 
     private suspend fun probeInstalledVersion(serial: String): FwVersion? {

@@ -72,9 +72,10 @@ object EpsonImage {
         }
         val end = u32(OFF_END)
         val expectedEnd = base + data.size - 4
-        // A sealed image always CRCs to the same residue, so two images of the same
-        // length are indistinguishable to the watch. Bytes after the trailer change the
-        // file size and the description crc while the header-delimited image stays valid.
+        // +0x24 addresses the trailer of the sealed prefix. Bytes after that prefix
+        // stay in the file: size and crc32 cover them and the flasher sends them.
+        // CRC32_RESIDUE only means the prefix ends with its own CRC. It is not a
+        // content id, and a part is never dropped because its crc32 equals it.
         val sealedLen =
             if (end == expectedEnd) {
                 data.size

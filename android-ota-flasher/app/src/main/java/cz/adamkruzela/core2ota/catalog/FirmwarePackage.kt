@@ -134,8 +134,8 @@ class FirmwareDownloader(
                                     "header +0x34 says ${h.binaryVersion}"
                             }
                             if (h.suffixBytes > 0) {
-                                notes += "${type.label}: ${h.suffixBytes} B after the CRC trailer so the " +
-                                    "offered size and crc differ from the sealed image"
+                                notes += "${type.label}: ${h.suffixBytes} B after the CRC trailer; " +
+                                    "they are part of the file and are sent unchanged"
                             }
                             "base=0x%X end=0x%X trailer=0x%08X +0x34=%s%s".format(
                                 h.base,

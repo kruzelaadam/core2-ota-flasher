@@ -4,6 +4,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.AssumptionViolatedException
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
@@ -191,6 +192,8 @@ class FirmwarePackageTest {
     private fun expectFailure(fragment: String, block: () -> Unit) {
         try {
             block()
+        } catch (e: AssumptionViolatedException) {
+            throw e
         } catch (e: Exception) {
             assertTrue("expected \"$fragment\" in: ${e.message}", e.message.orEmpty().contains(fragment))
             return
