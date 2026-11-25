@@ -26,8 +26,8 @@ android {
         applicationId = "cz.adamkruzela.core2ota"
         minSdk = 31
         targetSdk = 35
-        versionCode = 47
-        versionName = "0.4.5"
+        versionCode = 48
+        versionName = "0.4.6"
         // Set in local.properties or the environment. Never commit the values.
         buildConfigField("String", "SUUNTO_APPKEY", "\"${localOrEnv("SUUNTO_APPKEY")}\"")
         buildConfigField(
