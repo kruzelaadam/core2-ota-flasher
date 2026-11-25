@@ -729,8 +729,24 @@ class OtaSession(
                 commLog.note("connectAttempt=${attempt + 1} failed: ${t.message}")
                 runCatching { mds.disconnect(macAddress) }
                 if (attempt == 0) {
-                    onProgress(OtaProgress.Status("Connect failed — waiting 5 s before the second attempt…"))
-                    delay(5_000)
+                    onProgress(
+                        OtaProgress.Status(
+                            "Connect failed — waiting until the radio is idle before retrying…",
+                        ),
+                    )
+                    var quietSince = 0L
+                    val deadline = System.currentTimeMillis() + 20_000
+                    while (System.currentTimeMillis() < deadline) {
+                        if (mds.isLinkUp(macAddress)) {
+                            quietSince = 0L
+                            runCatching { mds.disconnect(macAddress) }
+                        } else {
+                            val now = System.currentTimeMillis()
+                            if (quietSince == 0L) quietSince = now
+                            if (now - quietSince >= 2_500) break
+                        }
+                        delay(300)
+                    }
                 }
             }
         }

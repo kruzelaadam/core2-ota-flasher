@@ -111,7 +111,9 @@ object BleManagerGattHack {
     }
 
     /** True if BleManager still has an RxBleConnection for this MAC. */
-    fun isBleLinkUp(macAddress: String): Boolean =
+    fun isBleLinkUp(macAddress: String): Boolean = connectionCount(macAddress) > 0
+
+    fun connectionCount(macAddress: String? = null): Int =
         runCatching {
             val field =
                 BleManager::class.java.getDeclaredField("connectionMap").apply {
@@ -119,11 +121,23 @@ object BleManagerGattHack {
                 }
             @Suppress("UNCHECKED_CAST")
             val map = field.get(BleManager.INSTANCE) as Map<String, *>
-            map.keys.any { it.equals(macAddress, ignoreCase = true) }
-        }.getOrDefault(false)
+            if (macAddress == null) {
+                map.size
+            } else {
+                map.keys.count { it.equals(macAddress, ignoreCase = true) }
+            }
+        }.getOrDefault(0)
 
-    /** Avoid runaway wbId handles (10000001 → 1000000a) across reconnects in one process. */
+    /**
+     * Avoid runaway wbId handles across reconnects. Never clear the map while a
+     * GATT connection still exists: a new connect then reuses 10000001 and
+     * [ConnectedDevice.getNextPacket] slices a short buffer (`toIndex = 45`).
+     */
     fun resetAddressMapHandles(log: ((String) -> Unit)? = null) {
+        if (connectionCount() > 0) {
+            log?.invoke("AddressMap reset skipped — BleManager still has a connection")
+            return
+        }
         runCatching {
             val addressMap =
                 BleManager::class.java

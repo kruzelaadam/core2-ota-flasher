@@ -128,6 +128,22 @@ class MdsBridge(
         // Fill empty [wbId,"",""] triples before native HELLO (0.3.11 proved wbId REST is 404).
         BleSerialInject.setPending(macAddress, serialHint) { commLog?.note(it) }
         BleManagerGattHack.resetAddressMapHandles { commLog?.note(it) }
+        // Watch often drops the first link ~4 ms after HELLO_ACK (status 8) and
+        // BleManager reconnects itself a few seconds later. Failing that drop and
+        // starting a second connect resets the address map under a live packet
+        // buffer → IndexOutOfBoundsException toIndex=45 (2026-11-25 22:49 log).
+        var linkDownSince = 0L
+        val linkDropGraceMs = 12_000L
+
+        suspend fun linkDownTooLong(): Boolean {
+            if (BleManagerGattHack.isBleLinkUp(macAddress)) {
+                linkDownSince = 0L
+                return false
+            }
+            val now = System.currentTimeMillis()
+            if (linkDownSince == 0L) linkDownSince = now
+            return now - linkDownSince >= linkDropGraceMs
+        }
 
         fun failConnect(reason: String) {
             if (deferred.isCompleted) return
@@ -165,19 +181,14 @@ class MdsBridge(
             bootstrapJob?.cancel()
         }
 
-        // BleManager often calls disconnectCb without MDS onDisconnect (seen 0.3.28 secret-menu
-        // log: HELLO_ACK → disconnectCb → local POST ConnectedDevices → endless 502 probes).
+        // disconnectCb during the first HELLO is the watch bouncing the link.
+        // BleManager retries on its own; failing here starts a second connect
+        // on top of that retry.
         BleSerialInject.setWbDisconnectListener { wb ->
-            val mapped = BleManagerGattHack.wbAddressFor(macAddress)
-            if (mapped != null && mapped != wb) return@setWbDisconnectListener
             if (deferred.isCompleted) return@setWbDisconnectListener
             commLog?.event(
                 "WB_DISCONNECT_CB",
-                "wb=$wb mac=$macAddress mapped=${mapped ?: "—"} sawBle=$sawBle",
-            )
-            failConnect(
-                "Whiteboard BLE dropped after HELLO (disconnectCb wb=$wb). " +
-                    "Force-stop Suunto, wake watch, retry.",
+                "wb=$wb mac=$macAddress sawBle=$sawBle — waiting for BleManager retry",
             )
         }
 
@@ -202,14 +213,18 @@ class MdsBridge(
                         scope.launch {
                             // Wait for HELLO_ACK + first WB GETs (0.3.9–0.3.12 window).
                             delay(1_200)
-                            if (!isActive || deferred.isCompleted) return@launch
-                            if (!BleManagerGattHack.isBleLinkUp(macAddress)) {
-                                failConnect(
-                                    "BLE link gone before ConnectedDevices POST " +
-                                        "(watch dropped WB after HELLO).",
-                                )
-                                return@launch
+                            while (isActive && !deferred.isCompleted &&
+                                !BleManagerGattHack.isBleLinkUp(macAddress)
+                            ) {
+                                if (linkDownTooLong()) {
+                                    failConnect(
+                                        "BLE link stayed down before ConnectedDevices POST.",
+                                    )
+                                    return@launch
+                                }
+                                delay(400)
                             }
+                            if (!isActive || deferred.isCompleted) return@launch
 
                             val hint = serialHint?.trim().orEmpty()
                             // 0.3.12: POST ConnectedDevices is what actually mapped serial
@@ -237,12 +252,13 @@ class MdsBridge(
                                 n++
                                 delay(2_000)
                                 if (!isActive || deferred.isCompleted) return@launch
-                                if (!BleManagerGattHack.isBleLinkUp(macAddress)) {
+                                if (linkDownTooLong()) {
                                     failConnect(
-                                        "BLE link dropped while polling ConnectedDevices.",
+                                        "BLE link stayed down while polling ConnectedDevices.",
                                     )
                                     return@launch
                                 }
+                                if (!BleManagerGattHack.isBleLinkUp(macAddress)) continue
                                 onPhase?.invoke("Polling MDS ConnectedDevices ($n)…")
                                 val mapped =
                                     runCatching { pollConnectedDevicesSerial() }.getOrNull()
@@ -272,13 +288,25 @@ class MdsBridge(
                     bootstrapJob?.cancel()
                     bootstrapJob =
                         scope.launch {
-                            if (!BleManagerGattHack.isBleLinkUp(macAddress)) {
+                            if (linkDownTooLong()) {
                                 failConnect(
-                                    "SDS mapped serial=$serial but BLE already down — " +
-                                        "ConnectedDevices was local-only.",
+                                    "SDS mapped serial=$serial but BLE stayed down.",
                                 )
                                 return@launch
                             }
+                            while (isActive && !deferred.isCompleted &&
+                                !BleManagerGattHack.isBleLinkUp(macAddress)
+                            ) {
+                                onPhase?.invoke("Link down after serial=$serial — waiting for retry…")
+                                if (linkDownTooLong()) {
+                                    failConnect(
+                                        "SDS mapped serial=$serial but BLE stayed down.",
+                                    )
+                                    return@launch
+                                }
+                                delay(400)
+                            }
+                            if (!isActive || deferred.isCompleted) return@launch
                             onPhase?.invoke(
                                 "SDS mapped serial=$serial — waiting until WB answers…",
                             )
@@ -288,11 +316,16 @@ class MdsBridge(
                             var consecutiveFail = 0
                             repeat(24) { attempt ->
                                 if (!isActive || deferred.isCompleted) return@launch
-                                if (!BleManagerGattHack.isBleLinkUp(macAddress)) {
+                                if (linkDownTooLong()) {
                                     failConnect(
-                                        "BLE dropped during WB probe after serial=$serial",
+                                        "BLE stayed down during WB probe after serial=$serial",
                                     )
                                     return@launch
+                                }
+                                if (!BleManagerGattHack.isBleLinkUp(macAddress)) {
+                                    consecutiveFail = 0
+                                    delay(400)
+                                    return@repeat
                                 }
                                 if (runCatching { probeWhiteboard(serial) }.getOrDefault(false)) {
                                     tryComplete(
@@ -341,11 +374,11 @@ class MdsBridge(
                     commLog?.event("DISCONNECT", "mac=$mac sawBle=$sawBle")
                     if (deferred.isCompleted) {
                         linkLostListener?.invoke("MDS onDisconnect $mac")
-                        return
+                    } else {
+                        commLog?.note(
+                            "Handshake disconnect on $mac — not failing; BleManager retries the link",
+                        )
                     }
-                    failConnect(
-                        "MDS disconnected before Whiteboard ready (sawBle=$sawBle)",
-                    )
                 }
             },
         )
@@ -420,16 +453,9 @@ class MdsBridge(
             commLog?.note("skip probe of wbId-like host=$host (not an MDS REST serial)")
             return false
         }
-        // Core 2 BLE: Nordic serves /Info reliably. Application /Device/* usually
-        // 404s with [wb] Failed to get resource and hammering them can drop WB
-        // (seen 0.3.30 secret-menu log). Probe /Info first.
-        val uris =
-            listOf(
-                "suunto://$host/Info",
-                "suunto://$host/Update/Info",
-                "suunto://$host/net/Core2/Info",
-                "suunto://$host/Device/Info/Serial",
-            )
+        // /Info only. Extra GETs (/Device/*, /net/Core2/*) 404 locally before HELLO
+        // finishes and a burst of them has dropped the Whiteboard link.
+        val uris = listOf("suunto://$host/Info")
         for (uri in uris) {
             val ok =
                 runCatching {
