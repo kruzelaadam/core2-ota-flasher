@@ -24,8 +24,10 @@ data class ModifiedPackage(
  * Each version is a child folder containing `Version.txt` and a firmware ZIP
  * (`Corium_1.0.0`, `1.14.2`, …). The flasher scans that parent so a new folder shows up
  * without an app update. [BuildConfig.MODIFIED_INDEX_FILE_ID] is the next fallback.
- * If the folder is not link-shared, [bundled] still serves the packages that are in
- * `Suunto Core 2 firmware`, with the ZIP taken from the public CDN.
+ * The mirror is the link-shared `Core2-Modified` folder. A package folder is any child
+ * that has a firmware ZIP and a changelog: `Version.txt`, or any other `.txt` whose
+ * name contains "version" (Corium uses `Version 1.0.0 (Corium).txt`).
+ * If that folder cannot be listed, [bundled] is the offline fallback.
  */
 class ModifiedCatalog {
     fun fetchIndex(): List<ModifiedPackage> {
@@ -138,11 +140,16 @@ class ModifiedCatalog {
             },
         )
 
+    internal fun pickChangelog(files: List<DriveListedFile>): DriveListedFile? {
+        val txts = files.filter { !it.isFolder && it.name.endsWith(".txt", ignoreCase = true) }
+        return txts.firstOrNull { it.name.equals("Version.txt", ignoreCase = true) }
+            ?: txts.firstOrNull { it.name.contains("version", ignoreCase = true) }
+            ?: txts.firstOrNull()
+    }
+
     private fun loadPackageFolder(name: String, folderId: String): ModifiedPackage {
         val files = DriveFolderListing.listFolder(folderId)
-        val version =
-            files.firstOrNull { it.name.equals("Version.txt", ignoreCase = true) }
-                ?: error("$name: missing Version.txt")
+        val version = pickChangelog(files) ?: error("$name: missing a Version .txt changelog")
         val zip =
             files.firstOrNull {
                 it.name.endsWith(".zip", ignoreCase = true) &&

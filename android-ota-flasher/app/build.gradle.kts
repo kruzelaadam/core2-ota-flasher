@@ -26,8 +26,8 @@ android {
         applicationId = "cz.adamkruzela.core2ota"
         minSdk = 31
         targetSdk = 35
-        versionCode = 49
-        versionName = "0.4.7"
+        versionCode = 50
+        versionName = "0.4.8"
         // Set in local.properties or the environment. Never commit the values.
         buildConfigField("String", "SUUNTO_APPKEY", "\"${localOrEnv("SUUNTO_APPKEY")}\"")
         buildConfigField(
@@ -38,7 +38,7 @@ android {
         buildConfigField(
             "String",
             "MODIFIED_MIRROR_FOLDER_ID",
-            "\"${localOrEnv("MODIFIED_MIRROR_FOLDER_ID", "1U66X4akqPq-2kb_vhOWfJ5iXd7fTB4Vx")}\"",
+            "\"${localOrEnv("MODIFIED_MIRROR_FOLDER_ID", "1PwGJX-HqWAVOMVzxTi-0wFv3WduHeIUH")}\"",
         )
         buildConfigField(
             "String",

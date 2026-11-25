@@ -16,4 +16,14 @@ class ModifiedCatalogTest {
             assertEquals(pkg.versionNotes, ModifiedCatalog().fetchVersionNotes(pkg))
         }
     }
+
+    @Test
+    fun coriumChangelogNameIsAccepted() {
+        val files =
+            listOf(
+                DriveListedFile("zip", "folder", "Explorer-fw_1.14.3-null.zip", "application/x-zip-compressed"),
+                DriveListedFile("txt", "folder", "Version 1.0.0 (Corium).txt", "text/plain"),
+            )
+        assertEquals("Version 1.0.0 (Corium).txt", ModifiedCatalog().pickChangelog(files)?.name)
+    }
 }
